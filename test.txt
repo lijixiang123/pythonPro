@@ -1,0 +1,3 @@
+select *
+from qttdw.dws_fin_getcoin_di
+where dt = '${YESTERDAY}'
