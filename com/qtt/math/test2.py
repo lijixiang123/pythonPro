@@ -13,3 +13,4 @@ Acat = Cat('小咪咪','母')
 print(Acat.name)
 print(Acat.sex)
 print(Acat.typ())
+
