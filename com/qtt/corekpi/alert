@@ -1,0 +1,125 @@
+import sys, os
+os.system("source /etc/profile")
+#os.system("cp ${py_path}/gaea_base.py ./")
+os.system("cp /Users/lijixiang/Desktop/code/python/pythonPro/com/qtt/corekpi/gaea_base.py ./")
+from dataclasses import dataclass
+import traceback, datetime
+from gaea_base import GaeaBase
+import numpy as np
+import mysql.connector
+import codecs, markdown
+
+###通过输入sql，presto引擎查询hive数据，然后通过企业微信机器人发送固定模版信息数据到指定的群
+
+
+@dataclass
+class GaeaCoreMorningReport(GaeaBase):
+    query_sql = '''
+select
+    nvl(round(sum(case when dt = '${YESTERDAY}' then dau else 0 end)/10000,2),0) as dau
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then dau else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',1) then dau else 0 end),0)/sum(case when dt = date_sub('${YESTERDAY}',1) then dau else 0 end)*100,2),0) as dau_1ratio
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then dau else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',7) then dau else 0 end),0)/sum(case when dt = date_sub('${YESTERDAY}',7) then dau else 0 end)*100,2),0) as dau_7ratio
+   
+   ,nvl(round(sum(case when dt = '${YESTERDAY}' then loss_cnt else 0 end)/10000,2),0) as loss_tuid_cnt
+   ,nvl(round(sum(case when dt = '${YESTERDAY}' then loss_ratio else 0 end)*100,2),0) as loss_ratio
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then loss_ratio else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',1) then loss_ratio else 0 end),0)*100,2),0) as loss_tuid_cnt_1ratio
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then loss_ratio else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',7) then loss_ratio else 0 end),0)*100,2),0) as loss_tuid_cnt_7ratio
+   
+   ,nvl(round(sum(case when dt = '${YESTERDAY}' then reflux_cnt else 0 end)/10000,2),0) as reflux_tuid_cnt
+   ,nvl(round(sum(case when dt = '${YESTERDAY}' then reflux_ratio else 0 end)*100,2),0) as reflux_ratio
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then reflux_ratio else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',1) then reflux_ratio else 0 end),0)*100,2),0) as reflux_tuid_cnt_1ratio
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then reflux_ratio else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',7) then reflux_ratio else 0 end),0)*100,2),0) as reflux_tuid_cnt_7ratio
+   
+   ,nvl(round(sum(case when dt = '${YESTERDAY}' then net_loss_ratio else 0 end)*100,2),0) as net_loss_ratio
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then net_loss_ratio else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',1) then net_loss_ratio else 0 end),0)*100,2),0) as net_loss_ratio_1ratio
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then net_loss_ratio else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',7) then net_loss_ratio else 0 end),0)*100,2),0) as net_loss_ratio_7ratio
+   
+   ,nvl(round(sum(case when dt >= date_sub('${YESTERDAY}',6) and dt <= '${YESTERDAY}' then net_loss_ratio else 0 end)/7*100,2),0) as week_net_loss_ratio
+   ,nvl(round((sum(case when dt >= date_sub('${YESTERDAY}',6) and dt <= '${YESTERDAY}' then net_loss_ratio else 0 end)/7-sum(case when dt >= date_sub('${YESTERDAY}',13) and dt <= date_sub('${YESTERDAY}',7) then net_loss_ratio else 0 end)/7)*100,2),0) as week_net_loss_ratio_1ratio
+   
+   ,nvl(round(sum(case when dt = '${YESTERDAY}' then new_tuid else 0 end)/10000,2),0) as new_tuid_cnt
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then new_tuid else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',1) then new_tuid else 0 end),0)/sum(case when dt = date_sub('${YESTERDAY}',1) then new_tuid else 0 end)*100,2),0) as new_tuid_cnt_1ratio
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then new_tuid else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',7) then new_tuid else 0 end),0)/sum(case when dt = date_sub('${YESTERDAY}',7) then new_tuid else 0 end)*100,2),0) as new_tuid_cnt_7ratio
+   
+   ,nvl(round(sum(case when dt = '${YESTERDAY}' then wlx_cpa else 0 end),2),0) as yes_cpa
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then wlx_cpa else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',1) then wlx_cpa else 0 end),0)/sum(case when dt = date_sub('${YESTERDAY}',1) then wlx_cpa else 0 end)*100,2),0) as yes_cpa_1ratio
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then wlx_cpa else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',7) then wlx_cpa else 0 end),0)/sum(case when dt = date_sub('${YESTERDAY}',7) then wlx_cpa else 0 end)*100,2),0) as yes_cpa_7ratio
+   
+   ,nvl(round(sum(case when dt = '${YESTERDAY}' then remain1_ratio else 0 end)*100,2),0) as remain1_ratio
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then remain1_ratio else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',1) then remain1_ratio else 0 end),0)*100,2),0) as remain1_ratio_1ratio
+   ,nvl(round(nvl(sum(case when dt = '${YESTERDAY}' then remain1_ratio else 0 end) - sum(case when dt = date_sub('${YESTERDAY}',7) then remain1_ratio else 0 end),0)*100,2),0) as remain1_ratio_7ratio
+
+from qttdm.srpt_corekpi_rz_tuid_di
+where dt >= date_sub('${YESTERDAY}',13)
+and dt <= '${YESTERDAY}'
+    '''
+
+    template = '''
+### {report_title}
+>**昨日DAU**: {dau}万 (日{dau_1ratio}, 周{dau_7ratio})
+>**昨日日活流失**: {loss_tuid_cnt}万, 流失占比 {loss_ratio}% (日{loss_tuid_cnt_1ratio}, 周{loss_tuid_cnt_7ratio}【绝对】)
+>**昨日不活跃回流**: {reflux_tuid_cnt}万, 回流占比 {reflux_ratio}% (日{reflux_tuid_cnt_1ratio}, 周{reflux_tuid_cnt_7ratio}【绝对】)
+>**净流失率**: {net_loss_ratio}% (日{net_loss_ratio_1ratio}, 周{net_loss_ratio_7ratio}【绝对】)
+>**周日均净流失率**: {week_net_loss_ratio}% (同比上周{week_net_loss_ratio_1ratio}【绝对】)
+>**新增**: {new_tuid_cnt}万 (日{new_tuid_cnt_1ratio}, 周{new_tuid_cnt_7ratio})
+>**外拉新CPA(税后)**: {yes_cpa} (日{yes_cpa_1ratio}, 周{yes_cpa_7ratio})
+>**前日新增次留**: {remain1_ratio}% (日{remain1_ratio_1ratio}, 周{remain1_ratio_7ratio}【绝对】)
+'''
+    msg_template = '''
+{content}
+\--------
+{now_time}
+    '''
+
+    def __post_init__(self):
+        GaeaBase.__init__(self)
+        self.task_date_str = self.get_last_days(0)
+
+    def set_task_date(self, dateStr: str = ""):
+        self.task_date_str = dateStr if "" != dateStr else self.task_date_str
+
+    def save_mysql_content(self, subject, content):
+        config = {
+            'host': 'rm-2zek30t07h77pak4f.mysql.rds.aliyuncs.com',
+            'user': 'dp',
+            'password': 'XZ4rMczoOdHx6dqo',
+            'port': 3306,
+            'database': 'portal',
+        }
+        main_sql = """
+        insert into morning_report_info(info_date,subject,content) values(%s,%s,%s)
+        """
+        print(main_sql)
+        con = mysql.connector.connect(**config)
+        cursor = con.cursor(buffered=True)
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        data = [today, subject, content]
+        cursor.execute(main_sql, data)
+        con.commit()
+        cursor.close()
+        con.close()
+
+    def run(self, task_date: str, report_title: str, robots=['dc_msg_robot_alert'], send_users=[], warning_users=[]):
+        self.set_task_date(self.get_some_day_ago(task_date, 1))
+
+        query_sql = self.query_sql.replace('${YESTERDAY}', self.task_date_str)
+        content = self.get_report_content(query_sql, self.template, warning_users, report_title)
+
+        self.save_mysql_content('rz', markdown.markdown(content.replace(f'### {report_title}', f'**{report_title}**').replace('>**', '**')))
+
+        self.send_report_msg(robots, report_title, content, send_users)
+
+if __name__ == '__main__':
+    #参数说明： 调度时间 机器人(多个以逗号隔开) 告警人(多个以逗号隔开) 单发给个人(非必填，多个以逗号隔开)
+    argv = sys.argv[1:]
+    she = GaeaCoreMorningReport()
+
+    input_date = argv[0] if len(argv) > 0 else she.get_last_days(0)
+    robots = (argv[1] if len(argv) > 1 else 'dc_msg_robot_alert').split(",")
+    warning_users = argv[2].split(",") if len(argv) > 2 else ['lijixiang@qutoutiao.net']
+    send_users = argv[3].split(",") if len(argv) > 3 else []
+
+    print(f"run param: input_date: {input_date}, robots: {robots}, warning_users: {warning_users}, send_users: {send_users}")
+    # dp_report_qtt_new 数据中心-盖亚报表平台-09
+    # dc_msg_robot_alert 测试机器人
+    she.run(input_date, 'RZ【TUID】', robots, warning_users, send_users)

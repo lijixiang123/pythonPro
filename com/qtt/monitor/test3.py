@@ -1,7 +1,7 @@
 #coding=utf-8
 import sys
-reload(sys)
-sys.setdefaultencoding("utf-8")
+
+
 import datetime
 import requests
 import json
@@ -14,6 +14,7 @@ import collections
 import os
 
 
+
 #全局参数区域
 url = "https://oa.qutoutiao.net/api/open-api/get-user-by-email"
 HEADERS = {'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8'}
@@ -22,7 +23,7 @@ appId = 'DQC'
 timestamp = int(time.time())
 alert_type_wx={"mail":"1","email":"1","wx":"2","weixin":"2"}
 alert_type_phone={"phone":"3"}
-dag_type_tuple={"presto":"dq_day_check","presto":"dwdag","clickhouse":"dq_minute_check"}
+dag_type_tuple={"presto":"dq_day_check","clickhouse":"dq_minute_check"}
 
 #mysql链接
 conf_mysql = {
@@ -31,6 +32,15 @@ conf_mysql = {
     'password': 'BZ!ju7MleEP&Lho@',
     'port': 3306,
     'database': 'airflow',
+}
+
+#日志数据写入mysql
+log_mysql = {
+    'host': 'rm-2zespg861xcsdhjn1.mysql.rds.aliyuncs.com',
+    'user': 'dwdata_w',
+    'password': 'Wz729D4753q3456g',
+    'port': 3306,
+    'database': 'dwdata',
 }
 
 #告警模块
@@ -137,6 +147,7 @@ def get_data(v_sql,engine):
     data=json.loads(ret.content)
     errCode=int(data["errorCode"])
     if errCode==1000:
+        print("presto查询连接池满，返回错误码1000，尝试3次重试查询")
         while(retry_cnt > 0 and errCode == 1000):
             ret = requests.post(url_alert, data=json.dumps(body),headers=headers)
             data=json.loads(ret.content)
@@ -333,10 +344,6 @@ def get_quns(users):
             uids=uids+str(name.split("|")[0])+"@qutoutiao.net|"+str(name.split("|")[1])+","
     return uids[:-1]
 
-#查询hql文件描述
-def get_meta_data(query):
-
-    return ""
 
 #mail,wx返回数字
 def get_alert_wx(alert_types):
@@ -356,131 +363,40 @@ def get_alert_phone(alert_types):
             alerttype=alerttype+alert_type_phone[alert]+","
     return alerttype[:-1]
 
+def get_quns(users):
+    uids=''
+    us=re.split("[,;；]",users)
+    for name in us:
+        if name.count("|") >  0 :
+            uids=uids+str(name.split("|")[0])+"@qutoutiao.net|"+str(name.split("|")[1])+","
+    return uids[:-1]
+
+def get_robots(users):
+    robots=''
+    us=re.split("[,;；]",users)
+    for name in us:
+        if re.findall(r'\w*-\w*-\w*-\w*-\w*', name) :
+            robots=robots+name+","
+    return robots[:-1]
+#机器人
+def robot_alert(content,users):
+    url_alert = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=f28eac1c-26da-44e2-84a2-a5b33a93f1ed"
+    headers={
+        'Content-Type':'application/json'
+    }
+    body = {
+        "msgtype": "text",
+        "text": {
+            "content": content,
+            "mentioned_mobile_list":[users]
+        }
+    }
+    ret = requests.post(url_alert, data=json.dumps(body),headers=headers)
 
 if __name__ == "__main__":
-    #入参日期，例如：2019-01-01
-    date_time = "2019-08-01"
-    #hive的数据源，暂时默认的，参数没有使用
-    data_source = "hive"
-    #hql文件的绝对路径位置
-    file_name = "/Users/lijixiang/aa.hql"
-    #c1:1.2,5;c2:3,4验证规格，先;切割，在:切分，在,切分
-    cols = '总成本环比:-0.00005,0.00005'
-    #告警类型1,2,3
-    alert_type = "wx"
-    users = "lijixiang,lijixiang|5d5e30588931853575408847"
-    #模版消息
-    msg_template=""
 
-    #默认引擎presto
-    engine='presto'
-    #默认presto抽样1000条
-    data_count=1
-    #异常占比
-    err_data_rate=0.1
-
-    #参数准备
-    fp=open(file_name,"r")
-    curr_day=(datetime.datetime.strptime(date_time, "%Y-%m-%d")-datetime.timedelta(days=-1)).strftime("%Y-%m-%d")
-    bef1_day=(datetime.datetime.strptime(date_time, "%Y-%m-%d")-datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-    content=open(file_name,"r").read().replace("${YESTERDAY}",date_time).replace("${YESTERDAY1}",bef1_day).replace("${TODAY}",curr_day)
-    v_sql = "select * from ("+content+" ) limit "+str(data_count)
-
-    #带有列名和数据的列表
-    print("v_sql:"+v_sql+"\n")
-    print("data_source:"+data_source+"\n")
-    #data=get_data(v_sql,data_source)
-    data={u'status': 200, u'errorCode': 0, u'message': u'ok', u'columnsName': [u'\u603b\u6210\u672c\u73af\u6bd4'], u'data': [[u'-0.009189592956931772']]}
-    print("data:"+str(data)+"\n")
-    print("data_data:"+str(data["data"])+"\n")
-    if len(data["data"]) == 0:
-        msg="没有数据"
-        #exit(1)
-
-    #获取实际记录数
-    data_count=get_min(data_count,len(data["data"]))
-
-    #获取逻辑判断后的信息
-    if len(data["data"]) > 0:
-        msg=check_data(data,cols)
-
-    print("用户列表："+str(users))
-    #获取uid列表
-    uids=get_uids(users,alert_type)
-    #获取群组列表
-    quns=get_quns(users)
-    #获取号码列表
-    phones=get_phones(users)
-    print("获取uid列表："+str(uids))
-    print("获取群组列表："+str(quns))
-    print("获取号码列表："+str(phones))
-
-    #文件名截取
-    filename=os.path.basename(file_name)
-
-    #hql文件desc描述获取
-    query_hql_desc = "select id,name,`desc` from dag_hql_file where name = '"+filename+"'"
-    #hql_desc=get_meta_data(query_hql_desc)[0][2]
-    hql_desc="测试任务"
-
-    #获取task_id
-    query_task_id = "select dag_id,task_id,task_hash_id,`comment`,JSON_EXTRACT(params,'$.owners') as owners from task_draft where dag_id = '"+dag_type_tuple[data_source]+"' and operator = 'BashOperator' and params like '%"+filename+"%' limit 1"
-    #dag_id=get_meta_data(query_task_id)[0][0]
-    #task_id=get_meta_data(query_task_id)[0][1]
-    #owners=get_meta_data(query_task_id)[0][4]
-    dag_id="dq_day_check"
-    task_id="check"
-    owners="lijixiang"
-
-    #报警类型处理
-    #alert_types=get_alert_type(alert_type)
-
-    #最后模版消息
-    result_msg=handle_msg2(msg,dag_id,task_id,owners,filename,content,msg_template)
-    #result_msg="明细结果\n"
-
-    #超过样本0.1告警
-    #if float(msg['total']) >= float(math.ceil(data_count*err_data_rate)):
-
-    if len(msg) > 0:
-        #异常结果显示
-        print("标题:"+str(hql_desc))
-        print("内容:"+str(result_msg))
-        #异常偏大，告警，微信邮箱并异常退出
-        if users is not None and len(uids) > 0 and uids is not None:
-            for uid in uids.split("_"):
-                print("=======企业微信推送消息==========")
-                print(str(uid.split("|")[0]))
-                print(get_alert_wx(str(uid.split("|")[1])))
-                alert_msg(str(uid.split("|")[0]),get_alert_wx(str(uid.split("|")[1])),hql_desc,result_msg)
-
-        #异常偏大，邮箱前缀电话告警
-        if users is not None and len(uids) > 0 and uids is not None:
-            for uid in uids.split("_"):
-                print("=======企业微信电话推送消息==========")
-                print(str(uid.split("|")[0]))
-                print(get_alert_phone(str(uid.split("|")[1])))
-                alert_msg(str(uid.split("|")[0]),get_alert_phone(str(uid.split("|")[1])),hql_desc,hql_desc)
-
-        #配置电话号码
-        if users is not None and len(phones) > 0 and phones is not None:
-            for phone in phones.split(","):
-                print("=======电话信推送消息==========")
-                print(phone)
-                print(result_msg)
-                phone_alert(result_msg.replace(":","_").replace(".","_").replace("\n","_"),phone)
-
-        #ETL监控群
-        if users is not None and len(quns) > 0 and quns is not None:
-            for qun in quns.split(","):
-                print("=======群推送消息==========")
-                print(str(qun.split("|")[0]))
-                print(str(qun.split("|")[1]))
-                #qun_alert(qun.split("|")[0],qun.split("|")[1],hql_desc,result_msg)
-
-        #exit(1)
-    else:
-        print(filename+"文件规则检查通过")
-
-    #关闭文件流
-    fp.close()
+        #获取群组列表
+    robot_alert("f28eac1c-26da-44e2-84a2-a5b33a93f1ed",'15055262610')
+    #print(get_user("guhongcheng"))
+    #5388,7935
+    #alert_msg("5388","2","检测算法t+2数据是否都已准备_固定推送","测试")
